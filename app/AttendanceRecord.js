@@ -25,35 +25,34 @@ const AttendanceRecord = () => {
   const [error, setError] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [totalDistance, setTotalDistance] = useState(null);
+  const [pointToPointDistances, setPointToPointDistances] = useState([]);
+  const [distanceError, setDistanceError] = useState(null);
   const fadeAnim = useState(new Animated.Value(0))[0];
 
-  // Convert UTC to IST (UTC+5:30) only if the input is UTC
-  // Simplified convertToIST function
-const convertToIST = (dateString) => {
-  const date = new Date(dateString);
-  
-  if (isNaN(date.getTime())) {
-    console.warn(`Invalid date string: ${dateString}`);
-    return new Date();
-  }
-
-  // Return the date as-is - the API should be sending timestamps in the correct timezone
-  return date;
-};
+  // Convert UTC to IST (simplified, assuming API sends correct timezone)
+  const convertToIST = (dateString) => {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      console.warn(`Invalid date string: ${dateString}`);
+      return new Date();
+    }
+    return date;
+  };
 
   // Format date to YYYY-MM-DD
   const formatDate = (date) => {
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   };
 
   // Format date to human-readable format (MMM DD, YYYY)
   const formatDisplayDate = (date) => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const month = months[date.getMonth()];
-    const day = String(date.getDate()).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, "0");
     const year = date.getFullYear();
     return `${month} ${day}, ${year}`;
   };
@@ -61,31 +60,14 @@ const convertToIST = (dateString) => {
   // Format time to HH:MM:SS AM/PM
   const formatTime = (date) => {
     let hours = date.getHours();
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12 || 12; // Convert 0 to 12 for midnight
-    return `${String(hours).padStart(2, '0')}:${minutes}:${seconds} ${ampm}`;
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12 || 12;
+    return `${String(hours).padStart(2, "0")}:${minutes}:${seconds} ${ampm}`;
   };
 
-  useEffect(() => {
-    fetchAttendanceRecords();
-  }, []);
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-    }).start();
-
-    const istDate = convertToIST(selectedDate.toISOString());
-    const formattedDate = formatDate(istDate);
-    setFilteredRecords(
-      attendanceRecords.filter((record) => record.date === formattedDate)
-    );
-  }, [selectedDate, attendanceRecords]);
-
+  // Fetch attendance records
   const fetchAttendanceRecords = async () => {
     try {
       setLoading(true);
@@ -108,10 +90,7 @@ const convertToIST = (dateString) => {
       }
 
       const recordsWithIST = data.data.map((record) => {
-        // Log raw timestamp for debugging
-        // console.log('Raw timestamp:', record.timestamp);
         const istTimestamp = convertToIST(record.timestamp);
-        // console.log('Converted IST timestamp:', istTimestamp.toISOString());
         return {
           ...record,
           timestamp: istTimestamp,
@@ -119,6 +98,7 @@ const convertToIST = (dateString) => {
         };
       });
 
+      console.log('Fetched records:', recordsWithIST.map(r => ({ id: r.id, timestamp: r.timestamp })));
       setAttendanceRecords(recordsWithIST || []);
     } catch (err) {
       setError(err.message || "Failed to load attendance records");
@@ -127,6 +107,70 @@ const convertToIST = (dateString) => {
       setLoading(false);
     }
   };
+
+  // Fetch daily distance for the selected date
+  const fetchDailyDistance = async (date) => {
+    try {
+      const token = await AsyncStorage.getItem("accessToken");
+      if (!token) {
+        throw new Error("No authentication token found");
+      }
+
+      console.log('Fetching distance for date:', date);
+
+      const response = await fetch(`${API_URL}/user/calculateDistance`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ date }),
+      });
+
+      const data = await response.json();
+
+      console.log('Distance API response:', data);
+
+      if (!data.success) {
+        throw new Error(data.message || "Failed to fetch distance");
+      }
+
+      setTotalDistance(data.totalDistance);
+      setPointToPointDistances(data.pointToPointDistances || []);
+      setDistanceError(null);
+    } catch (err) {
+      console.error("Error fetching distance:", err);
+      setTotalDistance(null);
+      setPointToPointDistances([]);
+      setDistanceError(err.message || "Failed to load distance data");
+    }
+  };
+
+  useEffect(() => {
+    fetchAttendanceRecords();
+  }, []);
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+
+    const formattedDate = formatDate(selectedDate);
+    console.log('Filtering records for date:', formattedDate);
+    // Sort records by timestamp descending (newest first)
+    const sortedRecords = attendanceRecords
+      .filter((record) => record.date === formattedDate)
+      .sort((a, b) => {
+        const timeA = a.timestamp instanceof Date ? a.timestamp : new Date(a.timestamp);
+        const timeB = b.timestamp instanceof Date ? b.timestamp : new Date(b.timestamp);
+        return timeB - timeA;
+      });
+    console.log('Sorted records:', sortedRecords.map(r => ({ id: r.id, timestamp: r.timestamp })));
+    setFilteredRecords(sortedRecords);
+    fetchDailyDistance(formattedDate);
+  }, [selectedDate, attendanceRecords]);
 
   const handleDateChange = (event, date) => {
     setShowDatePicker(false);
@@ -139,7 +183,7 @@ const convertToIST = (dateString) => {
     setSelectedDate(new Date());
   };
 
-  const renderAttendanceItem = ({ item }) => {
+  const renderAttendanceItem = ({ item, index }) => {
     const scaleAnim = new Animated.Value(1);
 
     const onPressIn = () => {
@@ -155,6 +199,18 @@ const convertToIST = (dateString) => {
         useNativeDriver: true,
       }).start();
     };
+
+    // Find the distance for this specific attendance record by ID
+    const distanceInfo = pointToPointDistances.find(d => d.attendanceId === item.id);
+    const pointDistance = distanceInfo ? distanceInfo.distance : null;
+    const isFirstRecord = distanceInfo ? distanceInfo.isFirst : false;
+
+    console.log(`Rendering item ${index}:`, { 
+      id: item.id, 
+      pointDistance, 
+      isFirstRecord,
+      distanceInfo 
+    });
 
     return (
       <Animated.View
@@ -195,11 +251,45 @@ const convertToIST = (dateString) => {
               </Text>
             </View>
             <View style={styles.recordDetails}>
+              {isFirstRecord ? (
+                <View style={styles.detailRow}>
+                  <MaterialIcons name="flag" size={20} color="#4CAF50" />
+                  <Text style={[styles.detailText, { color: "#4CAF50" }]}>
+                    First location of the day (0.00 km)
+                  </Text>
+                </View>
+              ) : pointDistance && pointDistance !== 'N/A' ? (
+                <View style={styles.detailRow}>
+                  <MaterialIcons 
+                    name={pointDistance === '0.00' ? "location-pin" : "directions"}
+                    size={20} 
+                    color={pointDistance === '0.00' ? "#4CAF50" : 
+                           parseFloat(pointDistance) < 0.05 ? "#FFA500" : "#6C63FF"} 
+                  />
+                  <Text style={[
+                    styles.detailText,
+                    pointDistance === '0.00' && { color: "#4CAF50" },
+                    parseFloat(pointDistance) < 0.05 && parseFloat(pointDistance) > 0 && { color: "#FFA500" }
+                  ]}>
+                    {pointDistance === '0.00' ? 
+                      "Same location as previous (0.00 km)" :
+                      `Distance from previous: ${pointDistance} km${parseFloat(pointDistance) < 0.05 ? " (minimal movement)" : ""}`
+                    }
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.detailRow}>
+                  <MaterialIcons name="directions" size={20} color="#999" />
+                  <Text style={[styles.detailText, styles.unavailableText]}>
+                    Distance unavailable
+                  </Text>
+                </View>
+              )}
               <View style={styles.detailRow}>
                 <MaterialIcons name="flag" size={20} color="#6C63FF" />
                 <Text style={styles.detailText}>Purpose: {item.purpose}</Text>
               </View>
-              {item.subPurpose && (
+              {item.subPurpose && item.subPurpose !== 'N/A' && (
                 <View style={styles.detailRow}>
                   <MaterialIcons
                     name="subdirectory-arrow-right"
@@ -223,7 +313,7 @@ const convertToIST = (dateString) => {
                   Coordinates: {item.lat}, {item.lng}
                 </Text>
               </View>
-              {item.feedback && (
+              {item.feedback && item.feedback !== 'N/A' && (
                 <View style={styles.detailRow}>
                   <MaterialIcons name="comment" size={20} color="#6C63FF" />
                   <Text style={styles.detailText}>
@@ -255,7 +345,7 @@ const convertToIST = (dateString) => {
         >
           <MaterialIcons name="calendar-today" size={20} color="white" />
           <Text style={styles.filterButtonText}>
-            {formatDisplayDate(convertToIST(selectedDate.toISOString()))}
+            {formatDisplayDate(selectedDate)}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.clearButton} onPress={clearDateFilter}>
@@ -263,6 +353,30 @@ const convertToIST = (dateString) => {
           <Text style={styles.clearButtonText}>Clear Filter</Text>
         </TouchableOpacity>
       </View>
+
+      {distanceError && filteredRecords.length > 0 && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{distanceError}</Text>
+        </View>
+      )}
+
+      {totalDistance !== null && filteredRecords.length > 0 && !distanceError && (
+        <View style={styles.distanceContainer}>
+          <MaterialIcons 
+            name="directions" 
+            size={20} 
+            color={totalDistance < 0.1 ? "#FFA500" : "#6C63FF"} 
+          />
+          <Text style={[
+            styles.distanceText,
+            totalDistance < 0.1 && { color: "#FFA500" }
+          ]}>
+            Total Distance Traveled: {totalDistance.toFixed(2)} km
+            {filteredRecords.length === 1 ? " (Single location)" : 
+             totalDistance < 0.1 ? " (minimal movement)" : ""}
+          </Text>
+        </View>
+      )}
 
       {showDatePicker && (
         <DateTimePicker
@@ -291,7 +405,7 @@ const convertToIST = (dateString) => {
         <View style={styles.emptyContainer}>
           <MaterialIcons name="event-busy" size={40} color="#999" />
           <Text style={styles.emptyText}>
-            No attendance records for {formatDisplayDate(convertToIST(selectedDate.toISOString()))}
+            No attendance records for {formatDisplayDate(selectedDate)}
           </Text>
         </View>
       ) : (
@@ -361,22 +475,36 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 5,
   },
+  distanceContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 15,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E5E5",
+  },
+  distanceText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginLeft: 10,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
   errorContainer: {
-    flex: 1,
-    justifyContent: "center",
+    padding: 15,
+    backgroundColor: "#FFE6E6",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E5E5",
     alignItems: "center",
-    padding: 20,
   },
   errorText: {
     color: "#FF4444",
     fontSize: 16,
     fontWeight: "500",
-    marginBottom: 20,
     textAlign: "center",
   },
   retryButton: {
@@ -384,6 +512,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
+    marginTop: 10,
   },
   retryButtonText: {
     color: "white",
@@ -463,6 +592,10 @@ const styles = StyleSheet.create({
     color: "#333",
     marginLeft: 10,
     flex: 1,
+  },
+  unavailableText: {
+    color: "#999",
+    fontStyle: "italic",
   },
 });
 

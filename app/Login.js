@@ -1,16 +1,30 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, TouchableOpacity } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import React, { useState, useEffect, useRef } from "react";
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Dimensions,
+  Animated,
+  StatusBar,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView
+} from "react-native";
+import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { API_URL } from '@env';
 import { Snackbar } from 'react-native-paper';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Camera } from 'expo-camera';
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
 import * as Device from 'expo-device';
+
+const { width, height } = Dimensions.get('window');
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -19,14 +33,71 @@ export default function Login() {
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
   const [snackbarType, setSnackbarType] = useState("default");
-  const navigation = useNavigation();
+  const [loading, setLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const router = useRouter();
+
+  // Animation refs
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
   // Verify modules are available on component mount
   useEffect(() => {
     console.log('Battery module available:', !!Battery);
     console.log('Device module available:', !!Device);
-    console.log(`At login: ${API_URL}`)
+    console.log(`At login: ${API_URL}`);
+
+    // Initialize animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 20,
+        friction: 7,
+        useNativeDriver: true,
+      })
+    ]).start();
   }, []);
+
+  // Email validation
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email) {
+      setEmailError("Email is required");
+      return false;
+    } else if (!emailRegex.test(email)) {
+      setEmailError("Please enter a valid email address");
+      return false;
+    } else {
+      setEmailError("");
+      return true;
+    }
+  };
+
+  // Password validation
+  const validatePassword = (password) => {
+    if (!password) {
+      setPasswordError("Password is required");
+      return false;
+    } else if (password.length < 6) {
+      setPasswordError("Password must be at least 6 characters");
+      return false;
+    } else {
+      setPasswordError("");
+      return true;
+    }
+  };
 
   const showSnackbar = (message, type = "default") => {
     setSnackbarMessage(message);
@@ -100,10 +171,16 @@ export default function Login() {
   };
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      showSnackbar("All fields must be filled", "error");
+    // Validate form fields
+    const isEmailValid = validateEmail(email);
+    const isPasswordValid = validatePassword(password);
+    
+    if (!isEmailValid || !isPasswordValid) {
+      showSnackbar("Please fix the errors below", "error");
       return;
     }
+
+    setLoading(true);
 
     try {
       // console.log("Attempting login with:", { email, url: `${API_URL}/user/login` });
@@ -145,9 +222,9 @@ export default function Login() {
         showSnackbar("Login successful! Redirecting...", "success");
         setTimeout(() => {
           if (data.user.role === "ADMIN") {
-            navigation.navigate("AdminTabs", { user: data.user });
+            router.push("/(tabs)/UserDashboard");
           } else {
-            navigation.navigate("(tabs)", { user: data.user });
+            router.push("/(tabs)/UserDashboard");
           }
         }, 2000);
       } else {
@@ -157,97 +234,340 @@ export default function Login() {
       console.error("Login Error:", error);
       const errorMessage = error.response?.data?.message || "Network error. Please check your connection or server status.";
       showSnackbar(errorMessage, "error");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <LinearGradient colors={["#4A90E2", "#9013FE"]} style={{ flex: 1 }}>
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 20 }}>
-        <Text style={{ fontSize: 32, fontWeight: "bold", color: "white", marginBottom: 20 }}>
-          Welcome Back
-        </Text>
-        <Text style={{ fontSize: 16, color: "#ddd", textAlign: "center", marginBottom: 20 }}>
-          Please add your email address and password
-        </Text>
-        
-        {/* Email Input */}
-        <TextInput
-          style={{
-            width: "100%",
-            height: 50,
-            borderWidth: 1,
-            borderColor: "#ccc",
-            borderRadius: 10,
-            paddingHorizontal: 15,
-            fontSize: 18,
-            backgroundColor: "white",
-            marginBottom: 15,
-          }}
-          placeholder="Email"
-          placeholderTextColor="#888"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        
-        {/* Password Input */}
-        <View style={{ width: "100%", position: "relative", marginBottom: 15 }}>
-          <TextInput
-            style={{
-              width: "100%",
-              height: 50,
-              borderWidth: 1,
-              borderColor: "#ccc",
-              borderRadius: 10,
-              paddingHorizontal: 15,
-              fontSize: 18,
-              backgroundColor: "white",
-            }}
-            placeholder="Password"
-            placeholderTextColor="#888"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!showPassword}
-          />
-          <TouchableOpacity
-            style={{ position: "absolute", right: 15, top: 15 }}
-            onPress={() => setShowPassword(!showPassword)}
-          >
-            <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color="#888" />
-          </TouchableOpacity>
-        </View>
-        
-        {/* Login Button */}
-        <TouchableOpacity
-          style={{
-            width: "100%",
-            backgroundColor: "#000",
-            paddingVertical: 15,
-            borderRadius: 10,
-            alignItems: "center",
-            marginBottom: 10,
-          }}
-          onPress={handleLogin}
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+      <LinearGradient colors={["#667eea", "#764ba2"]} style={styles.gradient}>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={{ color: "white", fontSize: 18, fontWeight: "bold" }}>
-            Login
-          </Text>
-        </TouchableOpacity>
-      </View>
-      
-      {/* Snackbar for notifications */}
-      <Snackbar
-        visible={snackbarVisible}
-        onDismiss={() => setSnackbarVisible(false)}
-        duration={3000}
-        style={{
-          backgroundColor: snackbarType === "error" ? "#D22B2B" : "#4CAF50",
-        }}
-      >
-        <Text style={{ color: "white" }}>{snackbarMessage}</Text>
-      </Snackbar>
-    </LinearGradient>
+          {/* Header Section */}
+          <Animated.View 
+            style={[
+              styles.headerSection,
+              {
+                opacity: fadeAnim,
+                transform: [
+                  { translateY: slideAnim },
+                  { scale: scaleAnim }
+                ]
+              }
+            ]}
+          >
+            {/* Logo/Icon */}
+            <View style={styles.logoContainer}>
+              <LinearGradient
+                colors={['rgba(255,255,255,0.2)', 'rgba(255,255,255,0.1)']}
+                style={styles.logoBackground}
+              >
+                <MaterialIcons name="work" size={60} color="white" />
+              </LinearGradient>
+            </View>
+            
+            <Text style={styles.welcomeTitle}>Welcome Back</Text>
+            <Text style={styles.welcomeSubtitle}>
+              Sign in to continue your productive journey
+            </Text>
+          </Animated.View>
+
+          {/* Form Section */}
+          <Animated.View 
+            style={[
+              styles.formSection,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }]
+              }
+            ]}
+          >
+            {/* Email Input */}
+            <View style={styles.inputContainer}>
+              <View style={styles.inputWrapper}>
+                <MaterialIcons name="email" size={20} color="#667eea" style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.textInput, emailError ? styles.inputError : null]}
+                  placeholder="Email address"
+                  placeholderTextColor="#999"
+                  value={email}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    if (emailError) validateEmail(text);
+                  }}
+                  onBlur={() => validateEmail(email)}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!loading}
+                />
+              </View>
+              {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
+            </View>
+            
+            {/* Password Input */}
+            <View style={styles.inputContainer}>
+              <View style={styles.inputWrapper}>
+                <MaterialIcons name="lock" size={20} color="#667eea" style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.textInput, styles.passwordInput, passwordError ? styles.inputError : null]}
+                  placeholder="Password"
+                  placeholderTextColor="#999"
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (passwordError) validatePassword(text);
+                  }}
+                  onBlur={() => validatePassword(password)}
+                  secureTextEntry={!showPassword}
+                  editable={!loading}
+                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setShowPassword(!showPassword)}
+                  disabled={loading}
+                >
+                  <Ionicons 
+                    name={showPassword ? "eye-off" : "eye"} 
+                    size={20} 
+                    color="#667eea" 
+                  />
+                </TouchableOpacity>
+              </View>
+              {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
+            </View>
+            
+            {/* Login Button */}
+            <TouchableOpacity
+              style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+              onPress={handleLogin}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={loading ? ['#ccc', '#999'] : ['#4CAF50', '#45a049']}
+                style={styles.loginGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                {loading ? (
+                  <View style={styles.loadingContainer}>
+                    <MaterialIcons name="hourglass-empty" size={20} color="white" />
+                    <Text style={styles.loginButtonText}>Signing in...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.loginContainer}>
+                    <MaterialIcons name="login" size={20} color="white" />
+                    <Text style={styles.loginButtonText}>Sign In</Text>
+                  </View>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {/* Additional Info */}
+            <View style={styles.infoContainer}>
+              <View style={styles.infoItem}>
+                <MaterialIcons name="security" size={16} color="rgba(255,255,255,0.7)" />
+                <Text style={styles.infoText}>Secure login</Text>
+              </View>
+              <View style={styles.infoItem}>
+                <MaterialIcons name="cloud" size={16} color="rgba(255,255,255,0.7)" />
+                <Text style={styles.infoText}>Cloud sync</Text>
+              </View>
+            </View>
+          </Animated.View>
+        </ScrollView>
+        
+        {/* Snackbar for notifications */}
+        <Snackbar
+          visible={snackbarVisible}
+          onDismiss={() => setSnackbarVisible(false)}
+          duration={4000}
+          style={[
+            styles.snackbar,
+            {
+              backgroundColor: snackbarType === "error" ? "#f44336" : "#4CAF50",
+            }
+          ]}
+        >
+          <View style={styles.snackbarContent}>
+            <MaterialIcons 
+              name={snackbarType === "error" ? "error" : "check-circle"} 
+              size={20} 
+              color="white" 
+            />
+            <Text style={styles.snackbarText}>{snackbarMessage}</Text>
+          </View>
+        </Snackbar>
+      </LinearGradient>
+    </KeyboardAvoidingView>
   );
-}
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  gradient: {
+    flex: 1,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 40,
+  },
+  headerSection: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logoContainer: {
+    marginBottom: 30,
+  },
+  logoBackground: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  welcomeTitle: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: 'white',
+    textAlign: 'center',
+    marginBottom: 10,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+  },
+  welcomeSubtitle: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.8)',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  formSection: {
+    width: '100%',
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 12,
+    paddingHorizontal: 15,
+    height: 55,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+  },
+  passwordInput: {
+    paddingRight: 40,
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: 15,
+    padding: 5,
+  },
+  inputError: {
+    borderWidth: 1,
+    borderColor: '#f44336',
+  },
+  errorText: {
+    color: '#ffcdd2',
+    fontSize: 12,
+    marginTop: 5,
+    marginLeft: 5,
+    fontWeight: '500',
+  },
+  loginButton: {
+    marginTop: 10,
+    marginBottom: 30,
+  },
+  loginButtonDisabled: {
+    opacity: 0.7,
+  },
+  loginGradient: {
+    height: 55,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  loginContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  loginButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  infoContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 20,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  infoText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 5,
+  },
+  snackbar: {
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginBottom: 20,
+  },
+  snackbarContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  snackbarText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+});

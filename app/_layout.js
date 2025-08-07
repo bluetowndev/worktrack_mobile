@@ -17,6 +17,7 @@ export default function Layout() {
       <Stack.Screen name="Claim" options={{ headerShown: false }} />
       <Stack.Screen name="Employee Detail" options={{ headerShown: false }} />
       <Stack.Screen name="Logout" options={{ headerShown: false }} />
+      <Stack.Screen name="mapview" options={{ headerShown: false }} />
     </Stack>
   );
 }
