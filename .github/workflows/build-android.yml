@@ -20,18 +20,13 @@ jobs:
         java-version: '17'
     
     - name: Install dependencies
-      run: |
-        cd Mobile_App
-        npm install
+      run: npm install
     
     - name: Create .env file
-      run: |
-        cd Mobile_App
-        echo "API_URL=https://backend-sql-9ck0.onrender.com/api/v1" > .env
+      run: echo "API_URL=https://backend-sql-9ck0.onrender.com/api/v1" > .env
     
     - name: Build APK
       run: |
-        cd Mobile_App
         npx expo prebuild --platform android
         cd android
         chmod +x ./gradlew
@@ -40,4 +35,4 @@ jobs:
     - uses: actions/upload-artifact@v4
       with:
         name: app-release-apk
-        path: Mobile_App/android/app/build/outputs/apk/release/app-release.apk
+        path: android/app/build/outputs/apk/release/app-release.apk
