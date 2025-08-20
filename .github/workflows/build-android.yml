@@ -1,10 +1,6 @@
 name: Build Android APK
 
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -12,46 +8,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
+    - uses: actions/checkout@v4
+    
+    - uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: Mobile_App/package-lock.json
-
-    - name: Setup Java
-      uses: actions/setup-java@v4
+    
+    - uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
+    
     - name: Install dependencies
-      working-directory: ./Mobile_App
-      run: npm install
-
+      run: |
+        cd Mobile_App
+        npm install
+    
     - name: Create .env file
-      working-directory: ./Mobile_App
       run: |
+        cd Mobile_App
         echo "API_URL=https://backend-sql-9ck0.onrender.com/api/v1" > .env
-
-    - name: Generate native code
-      working-directory: ./Mobile_App
-      run: npx expo prebuild --platform android
-
+    
     - name: Build APK
-      working-directory: ./Mobile_App/android
       run: |
+        cd Mobile_App
+        npx expo prebuild --platform android
+        cd android
         chmod +x ./gradlew
         ./gradlew assembleRelease
-
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
+    
+    - uses: actions/upload-artifact@v4
       with:
         name: app-release-apk
         path: Mobile_App/android/app/build/outputs/apk/release/app-release.apk
