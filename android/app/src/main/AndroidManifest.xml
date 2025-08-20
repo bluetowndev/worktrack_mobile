@@ -32,6 +32,7 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="your-app-scheme"/>
         <data android:scheme="com.mihir3838.workk"/>
+        <data android:scheme="exp+workk"/>
       </intent-filter>
     </activity>
   </application>
